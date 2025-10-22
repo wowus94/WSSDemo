@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,8 +67,16 @@ fun WebSocketDemoScreen(
     val messages by viewModel.messages.collectAsState()
     val isConnected by viewModel.isConnected.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isReconnect by viewModel.isReconnect.collectAsState()
 
     var textFieldValue by remember { mutableStateOf("") }
+
+    val scrollState = rememberScrollState()
+
+    LaunchedEffect(messages.size) {
+        // Прокручиваем к самому низу, когда список обновляется
+        scrollState.animateScrollTo(scrollState.maxValue)
+    }
 
     Column(
         modifier = Modifier
@@ -81,7 +91,11 @@ fun WebSocketDemoScreen(
         )
 
         // Статус подключения
-        ConnectionStatus(isConnected = isConnected, isLoading = isLoading)
+        ConnectionStatus(
+            isConnected = isConnected,
+            isLoading = isLoading,
+            isReconnect = isReconnect
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -150,15 +164,21 @@ fun WebSocketDemoScreen(
             messages = messages,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .weight(1f),
+            scrollState = scrollState
         )
     }
 }
 
 @Composable
-fun ConnectionStatus(isConnected: Boolean, isLoading: Boolean) {
+fun ConnectionStatus(
+    isConnected: Boolean,
+    isLoading: Boolean,
+    isReconnect: Long?
+) {
     val (text, color) = when {
         isLoading -> "Подключение..." to MaterialTheme.colorScheme.secondary
+        isReconnect != null -> "Переподключение через $isReconnect сек" to MaterialTheme.colorScheme.secondary
         isConnected -> "Подключено к WebSocket" to MaterialTheme.colorScheme.primary
         else -> "Отключено" to MaterialTheme.colorScheme.error
     }
@@ -171,7 +191,11 @@ fun ConnectionStatus(isConnected: Boolean, isLoading: Boolean) {
 }
 
 @Composable
-fun MessagesLog(messages: List<ChatMessage>, modifier: Modifier = Modifier) {
+fun MessagesLog(
+    messages: List<ChatMessage>,
+    modifier: Modifier = Modifier,
+    scrollState: ScrollState
+) {
     val formatter = DateTimeFormatter.ofPattern("HH:mm:ss")
 
     Surface(
@@ -192,7 +216,7 @@ fun MessagesLog(messages: List<ChatMessage>, modifier: Modifier = Modifier) {
         } else {
             Column(
                 modifier = Modifier
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(16.dp)
             ) {
                 messages.forEach { message ->
@@ -213,7 +237,6 @@ fun MessagesLog(messages: List<ChatMessage>, modifier: Modifier = Modifier) {
                             fontFamily = FontFamily.SansSerif
                         )
                     }
-
                 }
             }
         }

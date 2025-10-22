@@ -13,6 +13,9 @@ class MainViewModel : ViewModel() {
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
+    private val _isReconnect = MutableStateFlow<Long?>(null)
+    val isReconnect: StateFlow<Long?> = _isReconnect.asStateFlow()
+
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
@@ -27,9 +30,18 @@ class MainViewModel : ViewModel() {
         observeMessages()
         observeConnection()
         observeErrors()
+        observeReconnectDelay()
 
         // Затем подключаемся
         connectToWebSocket()
+    }
+
+    private fun observeReconnectDelay() {
+        viewModelScope.launch {
+            webSocketManager.isReconnect.collect { delay ->
+                _isReconnect.value = delay
+            }
+        }
     }
 
     private fun connectToWebSocket() {
