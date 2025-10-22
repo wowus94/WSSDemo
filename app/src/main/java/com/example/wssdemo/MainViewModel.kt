@@ -10,8 +10,8 @@ import kotlinx.coroutines.launch
 class MainViewModel : ViewModel() {
     private val webSocketManager = WebSocketManager()
 
-    private val _messages = MutableStateFlow<List<String>>(emptyList())
-    val messages: StateFlow<List<String>> = _messages.asStateFlow()
+    private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
+    val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
@@ -59,8 +59,8 @@ class MainViewModel : ViewModel() {
     private fun observeErrors() {
         viewModelScope.launch {
             webSocketManager.messages.collect { message ->
-                if (message.contains("❌")) {
-                    _errorMessage.value = message
+                if (message.text.contains("❌")) {
+                    _errorMessage.value = message.text
                 }
             }
         }
