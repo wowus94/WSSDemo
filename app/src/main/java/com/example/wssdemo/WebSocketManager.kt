@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -25,6 +26,7 @@ class WebSocketManager {
     private var webSocket: WebSocket? = null
     private var reconnectAttempts = 0
     private var reconnectJob: Job? = null
+    private var pingJob: Job? = null
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
@@ -68,26 +70,34 @@ class WebSocketManager {
             reconnectAttempts = 0 // сброс попыток при успешном подключении
             _connectionState.tryEmit(true)
             _messages.tryEmit(ChatMessage("✅ Подключено к WebSocket серверу", isFromServer = true))
+            startPing()
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
-            _messages.tryEmit(ChatMessage("📨 Сервер: $text", isFromServer = true))
+            if (text == "ping") {
+                println("✅ Сервер ответил на ping")
+            } else {
+                _messages.tryEmit(ChatMessage("📨 Сервер: $text", isFromServer = true))
+            }
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             _messages.tryEmit(ChatMessage("❌ Ошибка подключения: ${t.message}", isFromServer = true))
             _connectionState.tryEmit(false)
             scheduleReconnect()
+            stopPing()
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
             _messages.tryEmit(ChatMessage("🔒 Соединение закрывается: $reason", isFromServer = true))
+            stopPing()
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
             _connectionState.tryEmit(false)
             _messages.tryEmit(ChatMessage("🔴 Соединение закрыто: $reason", isFromServer = true))
             scheduleReconnect()
+            stopPing()
         }
     }
 
@@ -99,6 +109,29 @@ class WebSocketManager {
             Log.e("WebSocket", "❌ Ошибка отправки сообщения: ${e.message}")
             _messages.tryEmit(ChatMessage("❌ Ошибка отправки: ${e.message}", isFromServer = true))
         }
+    }
+
+    private fun startPing(intervalMillis: Long = 30_000) {
+        if (pingJob?.isActive == true) return
+
+        pingJob = scope.launch {
+            while (isActive) {
+                delay(intervalMillis)
+                try {
+                    if (_connectionState.tryEmit(true)) {
+                        webSocket?.send("ping")
+                        println("📡 Ping отправлен")
+                    }
+                } catch (e: Exception) {
+                    println("⚠️ Ошибка при отправке ping: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun stopPing() {
+        pingJob?.cancel()
+        pingJob = null
     }
 
     fun disconnect() {
