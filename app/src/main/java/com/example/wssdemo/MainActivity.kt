@@ -1,5 +1,6 @@
 package com.example.wssdemo
 
+import android.app.Application
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -14,11 +15,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -44,7 +50,7 @@ class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels {
         object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return MainViewModel() as T
+                return MainViewModel(application) as T
             }
         }
     }
@@ -63,7 +69,8 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WebSocketDemoScreen(
-    viewModel: MainViewModel) {
+    viewModel: MainViewModel
+) {
     val messages by viewModel.messages.collectAsState()
     val isConnected by viewModel.isConnected.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -117,7 +124,7 @@ fun WebSocketDemoScreen(
                     viewModel.sendMessage(textFieldValue)
                     textFieldValue = ""
                 },
-                enabled = isConnected && textFieldValue.isNotBlank()
+                enabled = textFieldValue.isNotBlank()
             ) {
                 Text("Отправить")
             }
@@ -224,13 +231,26 @@ fun MessagesLog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = message.text,
-                            style = MaterialTheme.typography.bodySmall,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (message.queued) {
+                                Icon(
+                                    imageVector = Icons.Filled.Send,
+                                    contentDescription = "Очередь сообщений",
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .padding(end = 4.dp)
+                                )
+                            }
+                            Text(
+                                text = message.text,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
                         Text(
                             text = message.timestamp.format(formatter),
                             style = MaterialTheme.typography.bodySmall,
@@ -255,6 +275,6 @@ fun WebSocketDemoTheme(content: @Composable () -> Unit) {
 fun PreviewWebSocketDemo() {
     WebSocketDemoTheme {
         // Для превью создаем mock ViewModel
-        WebSocketDemoScreen(viewModel = MainViewModel())
+        WebSocketDemoScreen(viewModel = MainViewModel(Application()))
     }
 }

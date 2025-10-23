@@ -1,5 +1,6 @@
 package com.example.wssdemo
 
+import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import java.util.LinkedList
 import java.util.concurrent.TimeUnit
 import kotlin.math.pow
 
@@ -27,7 +29,9 @@ class WebSocketManager {
     private var reconnectAttempts = 0
     private var reconnectJob: Job? = null
     private var pingJob: Job? = null
+    private val messageQueue = LinkedList<String>()
 
+    private lateinit var appContext: Context
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
@@ -53,8 +57,9 @@ class WebSocketManager {
     val isReconnect: StateFlow<Long?> = _isReconnect.asStateFlow()
 
 
-    fun connect(url: String) {
+    fun connect(context: Context,url: String) {
         this.url = url
+        this.appContext = context.applicationContext
         try {
             val request = Request.Builder().url(url).build()
             webSocket = client.newWebSocket(request, createListener())
@@ -67,10 +72,19 @@ class WebSocketManager {
 
     private fun createListener() = object : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
-            reconnectAttempts = 0 // сброс попыток при успешном подключении
+            reconnectAttempts = 0
             _connectionState.tryEmit(true)
             _messages.tryEmit(ChatMessage("✅ Подключено к WebSocket серверу", isFromServer = true))
             startPing()
+            flushMessageQueue()
+            scope.launch {
+                val queued = MessageQueueStore.getAllMessages(appContext)
+                queued.forEach {
+                    webSocket?.send(it)
+                    _messages.tryEmit(ChatMessage("📤 (Из очереди) Вы: $it", isFromServer = true))
+                    MessageQueueStore.removeMessage(appContext, it)
+                }
+            }
         }
 
         override fun onMessage(webSocket: WebSocket, text: String) {
@@ -101,13 +115,18 @@ class WebSocketManager {
         }
     }
 
-    fun sendMessage(message: String) {
-        try {
-            webSocket?.send(message)
-            _messages.tryEmit(ChatMessage("📤 Вы: $message", isFromServer = true))
-        } catch (e: Exception) {
-            Log.e("WebSocket", "❌ Ошибка отправки сообщения: ${e.message}")
-            _messages.tryEmit(ChatMessage("❌ Ошибка отправки: ${e.message}", isFromServer = true))
+    fun sendMessage(context: Context, message: String) {
+        if (_connectionState.replayCache.firstOrNull() == true) {
+            try {
+                webSocket?.send(message)
+                _messages.tryEmit(ChatMessage("📤 Вы: $message", isFromServer = true))
+            } catch (e: Exception) {
+                scope.launch { MessageQueueStore.saveMessage(context, message) }
+                _messages.tryEmit(ChatMessage("⏳ В очереди: $message", isFromServer = true, queued = true))
+            }
+        } else {
+            scope.launch { MessageQueueStore.saveMessage(context, message) }
+            _messages.tryEmit(ChatMessage("⏳ В очереди: $message", isFromServer = true, queued = true))
         }
     }
 
@@ -158,12 +177,20 @@ class WebSocketManager {
 
             _isReconnect.value = null
             reconnectAttempts++
-            connect(url)
+            connect(appContext, url)
         }
     }
 
     private fun calculateReconnectDelay(): Long {
         val delay = 1000L * 2.0.pow(reconnectAttempts.toDouble())
         return minOf(delay.toLong(), 30_000L)
+    }
+
+    private fun flushMessageQueue() {
+        while (messageQueue.isNotEmpty()) {
+            val msg = messageQueue.poll()
+            webSocket?.send(msg)
+            _messages.tryEmit(ChatMessage("📤 (Очередь) Вы: $msg", isFromServer = true))
+        }
     }
 }

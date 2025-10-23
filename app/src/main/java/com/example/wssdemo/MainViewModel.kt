@@ -1,13 +1,14 @@
 package com.example.wssdemo
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class MainViewModel : ViewModel() {
+class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val webSocketManager = WebSocketManager()
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
@@ -47,7 +48,7 @@ class MainViewModel : ViewModel() {
     private fun connectToWebSocket() {
         _isLoading.value = true
         _errorMessage.value = null
-        webSocketManager.connect("wss://websocket-echo.com/")
+        webSocketManager.connect(getApplication(),"wss://websocket-echo.com/")
     }
 
     private fun observeMessages() {
@@ -79,8 +80,8 @@ class MainViewModel : ViewModel() {
     }
 
     fun sendMessage(message: String) {
-        if (message.isNotBlank() && _isConnected.value) {
-            webSocketManager.sendMessage(message)
+        if (message.isNotBlank()) {
+            webSocketManager.sendMessage(getApplication(), message)
         }
     }
 
